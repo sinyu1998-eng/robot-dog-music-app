@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机器狗音乐互动 · Web 原型</title>
+<style>
+:root{
+  --stage1:#2b5876; --stage2:#4e4376; --accent:#ffd54f;
+  --panel:#161b22; --card:#1f2630; --text:#e8edf2; --muted:#8b98a5;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#0d1117;color:var(--text);min-height:100vh}
+header{padding:16px 24px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #232b35}
+header .logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#ffd54f,#ff7043);display:flex;align-items:center;justify-content:center;font-size:20px}
+header h1{font-size:18px}
+header .sub{font-size:12px;color:var(--muted)}
+.wrap{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;padding:16px 24px;max-width:1200px;margin:0 auto}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid #2a323d;border-radius:14px;padding:16px}
+.card h2{font-size:14px;color:var(--muted);margin-bottom:10px;letter-spacing:1px}
+/* 舞台 */
+.stagebox{border-radius:12px;overflow:hidden;position:relative;background:linear-gradient(160deg,var(--stage1),var(--stage2));transition:background 1s}
+.stagebox svg{display:block;width:100%}
+.beatdot{position:absolute;top:12px;right:12px;width:14px;height:14px;border-radius:50%;background:var(--accent);opacity:.25;transition:opacity .05s}
+.statusbar{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;font-size:13px}
+.chip{background:#0d1117;border:1px solid #2a323d;border-radius:999px;padding:5px 12px}
+.chip b{color:var(--accent)}
+/* 控制 */
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+button{cursor:pointer;border:none;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:600;background:var(--accent);color:#222;transition:transform .1s}
+button:active{transform:scale(.96)}
+button.ghost{background:#2a323d;color:var(--text)}
+input[type=file]{display:none}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.stat{background:#0d1117;border-radius:10px;padding:10px;text-align:center}
+.stat .v{font-size:20px;font-weight:700;color:var(--accent)}
+.stat .k{font-size:11px;color:var(--muted);margin-top:2px}
+/* 聊天 */
+.chat{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;padding:4px}
+.msg{max-width:88%;padding:9px 13px;border-radius:12px;font-size:13.5px;line-height:1.55}
+.msg.user{align-self:flex-end;background:#2f81f7;color:#fff;border-bottom-right-radius:3px}
+.msg.bot{align-self:flex-start;background:#0d1117;border:1px solid #2a323d;border-bottom-left-radius:3px}
+.msg.bot .songlink{color:var(--accent);cursor:pointer;text-decoration:underline}
+.inputrow{display:flex;gap:8px;margin-top:10px}
+.inputrow input{flex:1;background:#0d1117;border:1px solid #2a323d;border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;outline:none}
+.hint{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+/* 架构说明 */
+.arch{font-size:13px;line-height:1.8;color:#c6cfd8}
+.arch code{background:#0d1117;padding:1px 6px;border-radius:5px;color:var(--accent);font-size:12px}
+.arch .flow{background:#0d1117;border-radius:10px;padding:12px;margin:8px 0;font-size:12.5px;line-height:2}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button{background:#0d1117;color:var(--muted);border:1px solid #2a323d;font-weight:500;padding:8px 14px;font-size:13px}
+.tabs button.on{background:var(--accent);color:#222;border-color:var(--accent)}
+.tabpane{display:none}
+.tabpane.on{display:block}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🐕</div>
+  <div>
+    <h1>机器狗音乐互动 · Web 原型</h1>
+    <div class="sub">音乐解析 → 情绪识别 → 动作编排 →（模拟狗 / 硬件适配层）｜ RAG 音乐知识问答</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- 左：舞台 -->
+  <div class="card">
+    <h2>狗狗舞台（模拟器）</h2>
+    <div class="stagebox" id="stagebox">
+      <svg viewBox="0 0 400 300" id="stage">
+        <ellipse cx="210" cy="262" rx="150" ry="14" fill="rgba(0,0,0,.25)"/>
+        <g id="dog">
+          <g id="tailG"><path d="M300 165 q32 -28 48 -16" stroke="#8b98a3" stroke-width="11" fill="none" stroke-linecap="round"/></g>
+          <rect id="leg1" x="192" y="200" width="18" height="52" rx="8" fill="#7d8a95"/>
+          <rect id="leg2" x="222" y="200" width="18" height="52" rx="8" fill="#95a2ad"/>
+          <rect id="leg3" x="262" y="200" width="18" height="52" rx="8" fill="#7d8a95"/>
+          <rect id="leg4" x="290" y="200" width="18" height="52" rx="8" fill="#95a2ad"/>
+          <rect id="body" x="180" y="138" width="132" height="72" rx="26" fill="#9aa7b1"/>
+          <rect x="196" y="150" width="44" height="20" rx="8" fill="#7d8a95" opacity=".7"/>
+          <g id="headG">
+            <path d="M122 102 L106 68 L142 92 Z" fill="#8b98a3"/>
+            <path d="M186 102 L202 68 L166 92 Z" fill="#8b98a3"/>
+            <rect x="108" y="96" width="92" height="84" rx="24" fill="#b8c4ce"/>
+            <circle id="eyeL" cx="136" cy="132" r="8" fill="#222"/>
+            <circle id="eyeR" cx="172" cy="132" r="8" fill="#222"/>
+            <circle cx="138" cy="130" r="2.5" fill="#fff"/>
+            <circle cx="174" cy="130" r="2.5" fill="#fff"/>
+            <rect x="146" y="152" width="18" height="13" rx="6" fill="#333"/>
+            <path d="M155 165 q0 8 -8 8 M155 165 q0 8 8 8" stroke="#333" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          </g>
+        </g>
+      </svg>
+      <div class="beatdot" id="beatdot"></div>
+    </div>
+    <div class="statusbar">
+      <span class="chip">状态：<b id="stAction">待机</b></span>
+      <span class="chip">BPM：<b id="stBpm">--</b></span>
+      <span class="chip">情绪：<b id="stMood">--</b></span>
+      <span class="chip">曲目：<b id="stSong">--</b></span>
+    </div>
+
+    <div class="row">
+      <label for="file"><button type="button" onclick="document.getElementById('file').click()">🎵 上传音乐</button></label>
+      <input type="file" id="file" accept="audio/*">
+      <button class="ghost" id="btnStop">⏹ 停止</button>
+      <button class="ghost" id="btnBle">🔗 连接真狗</button>
+      <a href="ble-probe.html" style="font-size:12.5px;color:#8b98a5;align-self:center;text-decoration:none;border-bottom:1px dashed #556">协议探测台 →</a>
+    </div>
+    <audio id="player" style="display:none"></audio>
+    <div class="stats" id="stats" style="display:none">
+      <div class="stat"><div class="v" id="vBpm">--</div><div class="k">BPM 节奏</div></div>
+      <div class="stat"><div class="v" id="vEnergy">--</div><div class="k">能量</div></div>
+      <div class="stat"><div class="v" id="vBright">--</div><div class="k">明亮度</div></div>
+      <div class="stat"><div class="v" id="vMood">--</div><div class="k">识别情绪</div></div>
+    </div>
+  </div>
+
+  <!-- 右：交互 -->
+  <div class="card">
+    <div class="tabs">
+      <button class="on" data-tab="chat">💬 语音点歌 / 音乐问答</button>
+      <button data-tab="arch">🏗 工程架构</button>
+    </div>
+
+    <div class="tabpane on" id="tab-chat">
+      <div class="chat" id="chat">
+        <div class="msg bot">你好！我是机器狗的音乐大脑 🧠。你可以：<br>
+          ① 点歌表演：「跳一首晴天」「表演一首悲伤的歌」<br>
+          ② 音乐问答：「周杰伦是什么风格」「这首歌 BPM 多少」<br>
+          ③ 求推荐：「推荐几首类似青花瓷的歌」<br>
+          也可以点左边上传你自己的音乐，我会分析节奏和情绪后编舞。</div>
+      </div>
+      <div class="inputrow">
+        <button class="ghost" id="btnMic" title="语音输入">🎤</button>
+        <input id="q" placeholder="输入或点🎤说话，如：跳一首欢快的歌">
+        <button id="btnSend">发送</button>
+      </div>
+      <div class="hint">RAG 检索库目前内置 24 首示例歌曲（见架构页）。语音输入需浏览器授权麦克风（Chromium 内核支持中文识别）。</div>
+    </div>
+
+    <div class="tabpane" id="tab-arch">
+      <div class="arch">
+        <b>数据流水线</b>
+        <div class="flow">
+          上传音乐 → Web Audio 解码 → 能量包络 + 过零率 → <code>BPM / 能量 / 明亮度</code><br>
+          → 情绪分类（兴奋/欢快/平静/低沉）→ 动作编排引擎（按节拍调度动作池）<br>
+          → <code>RobotDogAdapter</code> 适配层 → 当前：模拟狗 ｜ 未来：你的玩具狗协议
+        </div>
+        <b>RAG 问答流水线</b>
+        <div class="flow">
+          语音/文本 → 意图识别（点歌/问答/推荐）→ 检索（标题/艺人/曲风/情绪/标签 打分）<br>
+          → Top-K 结果 → 模板生成答案 + 相似推荐<br>
+          生产版：检索换成向量 Embedding，生成换成 LLM API（接口已预留 <code>askLLM()</code>）
+        </div>
+        <b>接真狗怎么做</b>
+        <div class="flow">
+          代码底部有 <code>class ToyDogAdapter</code> 骨架：把 <code>jump/spin/wag/bob...</code> 映射成你玩具狗的蓝牙/串口指令（如 <code>0x01 jump</code>），<br>
+          通过 Web Bluetooth 或树莓派中转发送即可。把你玩具狗的型号/协议文档发我，我帮你补全这一层。
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+ * 1) RAG 音乐知识库（示例 24 首；生产版放数据库 + 向量索引）
+ * ============================================================ */
+const KB=[
+{title:"晴天",artist:"周杰伦",genre:"流行",mood:"欢快",bpm:95,tags:["校园","吉他","青春"],desc:"周杰伦经典校园情歌，吉他扫弦清新，节奏中速偏轻快。"},
+{title:"青花瓷",artist:"周杰伦",genre:"中国风",mood:"平静",bpm:72,tags:["古风","婉约"],desc:"中国风代表作，五声音阶与古典意象，舒缓雅致。"},
+{title:"双截棍",artist:"周杰伦",genre:"嘻哈/摇滚",mood:"兴奋",bpm:140,tags:["快歌","说唱"],desc:"快节奏说唱摇滚，爆发力极强。"},
+{title:"夜曲",artist:"周杰伦",genre:"流行/R&B",mood:"低沉",bpm:87,tags:["伤感","钢琴"],desc:"钢琴主导的伤感慢歌，纪念逝去的爱情。"},
+{title:"稻香",artist:"周杰伦",genre:"流行/民谣",mood:"欢快",bpm:92,tags:["治愈","乡村"],desc:"温暖治愈的励志歌曲，民谣质感。"},
+{title:"光辉岁月",artist:"Beyond",genre:"摇滚",mood:"兴奋",bpm:132,tags:["励志","经典"],desc:"致敬曼德拉的摇滚经典，激昂向上。"},
+{title:"海阔天空",artist:"Beyond",genre:"摇滚",mood:"兴奋",bpm:128,tags:["励志","理想"],desc:"Beyond 最具代表性的理想之歌。"},
+{title:"红豆",artist:"王菲",genre:"流行",mood:"低沉",bpm:66,tags:["情歌","抒情"],desc:"王菲经典抒情慢歌，细腻哀婉。"},
+{title:"传奇",artist:"王菲",genre:"流行",mood:"平静",bpm:68,tags:["空灵","抒情"],desc:"空灵悠远的抒情作品。"},
+{title:"小苹果",artist:"筷子兄弟",genre:"舞曲",mood:"兴奋",bpm:125,tags:["广场舞","洗脑"],desc:"节奏强烈的洗脑舞曲。"},
+{title:"最炫民族风",artist:"凤凰传奇",genre:"舞曲/民族",mood:"兴奋",bpm:128,tags:["广场舞","欢快"],desc:"民族风与电子节奏结合的热闹舞曲。"},
+{title:"平凡之路",artist:"朴树",genre:"民谣/摇滚",mood:"平静",bpm:84,tags:["公路","感悟"],desc:"关于平凡与和解的公路之歌。"},
+{title:"成都",artist:"赵雷",genre:"民谣",mood:"平静",bpm:76,tags:["城市","叙事"],desc:"民谣叙事，关于成都街头的温柔记忆。"},
+{title:"演员",artist:"薛之谦",genre:"流行",mood:"低沉",bpm:70,tags:["情歌","伤感"],desc:"描写感情中伪装的伤感流行情歌。"},
+{title:"孤勇者",artist:"陈奕迅",genre:"流行/摇滚",mood:"兴奋",bpm:120,tags:["热血","游戏"],desc:"《英雄联盟》双城之战中文主题曲，热血激昂。"},
+{title:"十年",artist:"陈奕迅",genre:"流行",mood:"低沉",bpm:72,tags:["情歌","时间"],desc:"关于时间与错过的经典情歌。"},
+{title:"Sugar",artist:"Maroon 5",genre:"流行/放克",mood:"欢快",bpm:120,tags:["英文","派对"],desc:"轻快的放克流行，婚礼热门曲目。"},
+{title:"Shape of You",artist:"Ed Sheeran",genre:"流行/舞曲",mood:"欢快",bpm:96,tags:["英文","热带"],desc:"热带风情的流行舞曲。"},
+{title:"Billie Jean",artist:"Michael Jackson",genre:"流行/放克",mood:"兴奋",bpm:117,tags:["英文","经典","舞步"],desc:"标志性贝斯线，太空步之曲。"},
+{title:"Bohemian Rhapsody",artist:"Queen",genre:"摇滚",mood:"兴奋",bpm:144,tags:["英文","史诗"],desc:"结构复杂的摇滚史诗。"},
+{title:"My Heart Will Go On",artist:"Celine Dion",genre:"流行/影视",mood:"低沉",bpm:99,tags:["英文","泰坦尼克"],desc:"泰坦尼克号主题曲，深情大气。"},
+{title:"卡农",artist:"帕赫贝尔",genre:"古典",mood:"平静",bpm:70,tags:["纯音乐","古典"],desc:"D 大调卡农，最广为流传的古典小品。"},
+{title:"命运交响曲",artist:"贝多芬",genre:"古典",mood:"兴奋",bpm:108,tags:["纯音乐","古典","激昂"],desc:"第五交响曲，命运敲门动机，气势恢宏。"},
+{title:"月光奏鸣曲",artist:"贝多芬",genre:"古典",mood:"低沉",bpm:54,tags:["纯音乐","古典","忧伤"],desc:"第一乐章如月光般忧郁流动。"}];
+
+/* ============================================================
+ * 2) 硬件适配层：现在驱动模拟狗；接真狗时实现 ToyDogAdapter
+ * ============================================================ */
+class SimulatedDog{
+  constructor(){this.move="idle";this.bpm=100;this.mood="平静";}
+  setChoreo(bpm,mood){this.bpm=bpm;this.mood=mood;}
+  command(name){this.move=name;} // idle/bob/wag/spin/jump/sway/nod/crouch
+}
+/* 硬件适配层：读取 ble-probe.html 保存的 UUID 与指令表（同一 localStorage），
+   有配置就连真狗，没配置就纯模拟。 */
+const BLE_CFG_KEY='dogBleCfg';
+function hexToBytes(h){return new Uint8Array(h.trim().split(/[\s,]+/).map(x=>parseInt(x,16)).filter(n=>!isNaN(n)));}
+class ToyDogAdapter{
+  constructor(sim){
+    this.sim=sim;this.dev=null;this.ch=null;this.cfg=null;
+    try{this.cfg=JSON.parse(localStorage.getItem(BLE_CFG_KEY)||'null');}catch(e){this.cfg=null;}
+  }
+  get configured(){return !!(this.cfg&&this.cfg.service&&this.cfg.write&&this.cfg.cmds);}
+  get connected(){return !!(this.dev&&this.dev.gatt.connected&&this.ch);}
+  async connect(){
+    try{this.cfg=JSON.parse(localStorage.getItem(BLE_CFG_KEY)||'null');}catch(e){this.cfg=null;}
+    if(!this.configured) throw new Error('还没有协议配置：请先打开 ble-probe.html 探测并保存指令表');
+    const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[this.cfg.service]});
+    const server=await dev.gatt.connect();
+    const svc=await server.getPrimaryService(this.cfg.service);
+    this.ch=await svc.getCharacteristic(this.cfg.write);
+    this.dev=dev;
+    return dev.name||dev.id;
+  }
+  command(name){
+    this.sim.command(name);                       // 模拟狗始终同步，界面有反馈
+    if(!this.connected) return;
+    const hex=this.cfg.cmds[name];
+    if(!hex) return;
+    try{
+      const arr=hexToBytes(hex);
+      const p=this.ch.properties.writeWithoutResponse
+        ? this.ch.writeValueWithoutResponse(arr)
+        : this.ch.writeValue(arr);
+      if(p&&p.catch)p.catch(()=>{});
+    }catch(e){/* 忽略单帧失败，避免打断动画 */}
+  }
+}
+const sim=new SimulatedDog();
+const dog=new ToyDogAdapter(sim);
+
+/* ============================================================
+ * 3) 动作编排引擎：情绪 -> 动作池；节拍 -> 调度
+ * ============================================================ */
+const POOLS={兴奋:["jump","spin","bob"],欢快:["bob","wag","spin","nod"],平静:["sway","wag","nod"],低沉:["crouch","sway"]};
+const MOODCOLOR={兴奋:["#8e2de2","#ff512f"],欢快:["#f7971e","#ffd200"],平静:["#2b5876","#4e79a7"],低沉:["#232526","#414345"]};
+const anim={playing:false,t0:0,bpm:100,mood:"平静"};
+function startDance(bpm,mood,songName){
+  anim.playing=true;anim.t0=performance.now();anim.bpm=bpm;anim.mood=mood;
+  sim.setChoreo(bpm,mood);
+  document.getElementById('stAction').textContent='表演中';
+  document.getElementById('stBpm').textContent=bpm;
+  document.getElementById('stMood').textContent=mood;
+  document.getElementById('stSong').textContent=songName||'上传音乐';
+  const c=MOODCOLOR[mood]||MOODCOLOR.平静;
+  document.getElementById('stagebox').style.background=`linear-gradient(160deg,${c[0]},${c[1]})`;
+}
+function stopDance(){
+  anim.playing=false;dog.command('idle');
+  document.getElementById('stAction').textContent='待机';
+  document.getElementById('player').pause();
+}
+/* 渲染循环 */
+const $=id=>document.getElementById(id);
+const dogEl=$('dog'),headG=$('headG'),tailG=$('tailG');
+function frame(now){
+  if(anim.playing){
+    const phase=(now-anim.t0)/1000*anim.bpm/60;      // 节拍相位
+    const beat=Math.floor(phase), p=phase-beat;
+    const pool=POOLS[anim.mood]||POOLS.平静;
+    const mv=pool[Math.floor(beat/2)%pool.length];
+    if(sim.move!==mv)dog.command(mv);
+    const amp={兴奋:14,欢快:9,平静:4,低沉:2}[anim.mood]||6;
+    let ty=-Math.abs(Math.sin(Math.PI*p))*amp;      // 基础律动
+    let rot=0, headRot=Math.sin(Math.PI*p)*6;
+    if(mv==='jump')ty-=Math.sin(Math.PI*p)*34;
+    if(mv==='spin')rot=p*360;
+    if(mv==='sway')rot=Math.sin(Math.PI*p)*8;
+    if(mv==='nod')headRot=p*20;
+    if(mv==='crouch'){ty=8;headRot=14;}
+    dogEl.setAttribute('transform',`translate(0 ${ty}) rotate(${rot} 210 190)`);
+    headG.setAttribute('transform',`rotate(${headRot} 155 180)`);
+    const wagSpd=mv==='wag'?30:(anim.mood==='兴奋'?22:10);
+    tailG.setAttribute('transform',`rotate(${Math.sin(now/1000*wagSpd)*28} 300 165)`);
+    $('beatdot').style.opacity=(p<0.18)?1:0.25;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================================================
+ * 4) 音乐解析：BPM（onset 间隔直方图）+ 能量 + 明亮度（过零率）
+ * ============================================================ */
+async function analyzeAudio(file){
+  const buf=await file.arrayBuffer();
+  const AC=window.AudioContext||window.webkitAudioContext;
+  const ctx=new AC();
+  const audio=await ctx.decodeAudioData(buf);
+  const data=audio.getChannelData(0),sr=audio.sampleRate;
+  const frame_=1024,hop=512,energies=[];
+  for(let i=0;i+frame_<data.length;i+=hop){
+    let s=0;for(let j=0;j<frame_;j++)s+=data[i+j]*data[i+j];
+    energies.push(s/frame_);
+  }
+  const onsets=[],minGap=(sr/hop)*0.25;
+  for(let i=8;i<energies.length;i++){
+    let m=0;for(let j=i-8;j<i;j++)m+=energies[j];m/=8;
+    if(energies[i]>1.4*m&&energies[i]>0.0005&&(onsets.length===0||i-onsets[onsets.length-1]>minGap))onsets.push(i);
+  }
+  const hist={};
+  for(let i=1;i<onsets.length;i++){
+    let bpm=Math.round(60/((onsets[i]-onsets[i-1])*hop/sr));
+    while(bpm<60)bpm*=2;while(bpm>180)bpm=Math.round(bpm/2);
+    if(bpm>=60&&bpm<=180)hist[bpm]=(hist[bpm]||0)+1;
+  }
+  let bpm=110,best=0;for(const k in hist)if(hist[k]>best){best=hist[k];bpm=+k;}
+  const rms=Math.sqrt(energies.reduce((a,b)=>a+b,0)/energies.length);
+  let zc=0,n=0;for(let i=16;i<data.length;i+=16){n++;if((data[i-16]<0)!==(data[i]<0))zc++;}
+  return{bpm,energy:rms,brightness:n?zc/n:0,duration:audio.duration};
+}
+function classifyMood(f){
+  const e=Math.min(1,f.energy*10),b=Math.min(1,f.brightness*80);
+  if(f.bpm>=120&&e>0.3)return"兴奋";
+  if(f.bpm>=95&&b>0.35)return"欢快";
+  if(f.bpm<90&&e<0.22)return b>0.3?"平静":"低沉";
+  if(e<0.2&&b<0.3)return"低沉";
+  return e>0.3?"欢快":"平静";
+}
+$('file').addEventListener('change',async ev=>{
+  const f=ev.target.files[0];if(!f)return;
+  addMsg('bot',`收到《${f.name}》，正在分析节奏与情绪…`);
+  try{
+    const r=await analyzeAudio(f);
+    const mood=classifyMood(r);
+    $('stats').style.display='grid';
+    $('vBpm').textContent=r.bpm;$('vEnergy').textContent=(Math.min(1,r.energy*10)*100|0)+'%';
+    $('vBright').textContent=(Math.min(1,r.brightness*80)*100|0)+'%';$('vMood').textContent=mood;
+    const player=$('player');player.src=URL.createObjectURL(f);player.play();
+    startDance(r.bpm,mood,f.name.replace(/\.[^.]+$/,''));
+    addMsg('bot',`分析完成：BPM≈${r.bpm}，情绪识别为「${mood}」。狗狗开始跟着音乐表演啦 🐶 点「停止」可结束。`);
+  }catch(e){addMsg('bot','解析失败：'+e.message+'（换一首常见格式 mp3/wav 试试）');}
+});
+$('btnStop').onclick=stopDance;
+
+/* 真狗连接 */
+$('btnBle').onclick=async()=>{
+  if(!navigator.bluetooth){addMsg('bot','当前浏览器不支持 Web Bluetooth（需 Chrome / Edge，且用 http://localhost 打开，file:// 不行）。');return;}
+  try{
+    addMsg('bot','正在扫描蓝牙设备，请在弹窗里选择你的机器狗…');
+    const name=await dog.connect();
+    $('stAction').textContent='真狗已连接';
+    addMsg('bot',`✅ 已连接 <b>${name}</b>。接下来所有动作指令会实时发给真狗（BPM 节拍驱动）。`);
+  }catch(e){
+    addMsg('bot','连接失败：'+e.message+'<br>如果提示没有配置，请先打开 <a href="ble-probe.html" style="color:#ffd54f">协议探测台</a> 探测并保存指令表。');
+  }
+};
+
+/* ============================================================
+ * 5) RAG：意图识别 -> 检索打分 -> 模板生成（askLLM 预留）
+ * ============================================================ */
+function retrieve(q){
+  return KB.map(s=>{
+    let sc=0;
+    if(q.includes(s.title))sc+=10;
+    if(q.includes(s.artist))sc+=6;
+    if(q.includes(s.genre.split('/')[0]))sc+=3;
+    if(q.includes(s.mood))sc+=4;
+    s.tags.forEach(t=>{if(q.includes(t))sc+=2;});
+    return{s,sc};
+  }).filter(x=>x.sc>0).sort((a,b)=>b.sc-a.sc||a.s.title.localeCompare(b.s.title)).map(x=>x.s);
+}
+function similarTo(song){
+  return KB.filter(s=>s.title!==song.title)
+    .map(s=>({s,sc:(s.genre.split('/')[0]===song.genre.split('/')[0]?3:0)+(s.mood===song.mood?2:0)+s.tags.filter(t=>song.tags.includes(t)).length}))
+    .sort((a,b)=>b.sc-a.sc).slice(0,3).map(x=>x.s);
+}
+function songLine(s){return`<span class="songlink" onclick="performByTitle('${s.title}')">${s.title}</span>（${s.artist}｜${s.genre}｜${s.mood}｜BPM≈${s.bpm}）`;}
+async function askLLM(prompt){ /* 生产版在此接 LLM API */ return null; }
+function answer(q){
+  const hits=retrieve(q);
+  const moodWord=["兴奋","欢快","平静","低沉","悲伤","开心","嗨"].find(m=>q.includes(m));
+  const moodMap={悲伤:"低沉",开心:"欢快",嗨:"兴奋"};
+  // 点歌/表演
+  if(/跳|表演|放|点一?首|来一?首|唱/.test(q)){
+    let target=hits[0];
+    if(!target&&moodWord){const mw=moodMap[moodWord]||moodWord;target=KB.find(s=>s.mood===mw);}
+    if(!target)target=KB[Math.random()*KB.length|0];
+    performSong(target);
+    return`好嘞！给你表演 ${songLine(target)}。<br>🐶 ${target.desc}`;
+  }
+  // 求推荐
+  if(/推荐|类似|相似|还有/.test(q)){
+    const base=hits[0];
+    if(base){const rec=similarTo(base);return`如果你喜欢《${base.title}》，试试这几首：<br>${rec.map(songLine).join('<br>')}<br>点歌名可以直接让狗狗表演。`;}
+    if(moodWord){const mw=moodMap[moodWord]||moodWord;const rec=KB.filter(s=>s.mood===mw).slice(0,3);return rec.length?`「${mw}」风格推荐：<br>${rec.map(songLine).join('<br>')}`:'曲库里暂时没有这类歌。';}
+    return`告诉我你喜欢的一首歌或一种情绪，我来推荐～`;
+  }
+  // 知识问答
+  if(hits.length){
+    const s=hits[0];
+    return`《${s.title}》是 <b>${s.artist}</b> 的${s.genre}作品，情绪倾向「${s.mood}」，BPM 约 ${s.bpm}。<br>${s.desc}<br>想听就说「跳一首${s.title}」，或者说「推荐类似的」。`;
+  }
+  if(moodWord){const mw=moodMap[moodWord]||moodWord;const rec=KB.filter(s=>s.mood===mw).slice(0,3);return rec.length?`「${mw}」的歌有这些：<br>${rec.map(songLine).join('<br>')}`:'曲库暂时没有这类歌，试试别的情绪词。';}
+  return'我没太听懂 🤔 可以试试：「跳一首晴天」「周杰伦是什么风格」「推荐几首平静的歌」。';
+}
+function performSong(s){startDance(s.bpm,s.mood,s.title);}
+window.performByTitle=t=>{const s=KB.find(x=>x.title===t);if(s){performSong(s);addMsg('bot',`狗狗开始表演 ${songLine(s)} 🐶`);}};
+
+/* 聊天 UI + 语音识别 */
+function addMsg(who,html){const d=document.createElement('div');d.className='msg '+who;d.innerHTML=html;$('chat').appendChild(d);$('chat').scrollTop=1e6;}
+function send(){const v=$('q').value.trim();if(!v)return;$('q').value='';addMsg('user',v);setTimeout(()=>addMsg('bot',answer(v)),300);}
+$('btnSend').onclick=send;
+$('q').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(SR){
+  const rec=new SR();rec.lang='zh-CN';rec.interimResults=false;
+  rec.onresult=e=>{const t=e.results[0][0].transcript;$('q').value=t;send();};
+  rec.onerror=()=>addMsg('bot','语音识别失败了，检查一下麦克风权限，或直接打字。');
+  $('btnMic').onclick=()=>{rec.start();addMsg('bot','🎤 在听了，说吧…');};
+}else{$('btnMic').style.display='none';}
+</script>
+</body>
+</html>

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机器狗蓝牙协议探测台</title>
+<style>
+:root{--bg:#0d1117;--card:#1a212b;--line:#2a323d;--text:#e8edf2;--muted:#8b98a5;--accent:#4fc3f7;--ok:#3ddc84;--warn:#ffb74d}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"PingFang SC","Microsoft YaHei",monospace;background:var(--bg);color:var(--text);padding:18px;max-width:1100px;margin:0 auto}
+h1{font-size:18px;margin-bottom:4px}
+.sub{font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.7}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.card h2{font-size:13px;color:var(--muted);letter-spacing:1px;margin-bottom:10px}
+button{cursor:pointer;border:none;border-radius:8px;padding:9px 14px;font-size:13.5px;font-weight:600;background:var(--accent);color:#06202b}
+button.ghost{background:#2a323d;color:var(--text)}
+button.mini{padding:4px 9px;font-size:11.5px;border-radius:6px}
+button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select{background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;font-family:monospace;outline:none}
+input:focus{border-color:var(--accent)}
+label{font-size:12px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;font-family:monospace}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{color:var(--muted);font-weight:500}
+.log{background:#060a0f;border:1px solid var(--line);border-radius:8px;height:220px;overflow-y:auto;padding:10px;font-family:ui-monospace,monospace;font-size:12px;line-height:1.7}
+.log .rx{color:var(--ok)}.log .tx{color:var(--accent)}.log .sys{color:var(--muted)}
+.tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:4px;background:#233; color:#9fd;margin-left:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:800px){.grid2{grid-template-columns:1fr}}
+.warnbox{background:#2a1f10;border:1px solid #5a4020;border-radius:10px;padding:12px;font-size:12.5px;line-height:1.8;color:#ffd9a0}
+code{background:#060a0f;padding:1px 5px;border-radius:4px;color:var(--accent)}
+.mapgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.mapitem{background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:8px}
+.mapitem .n{font-size:11.5px;color:var(--muted);margin-bottom:5px}
+.mapitem input{width:100%;padding:5px 7px;font-size:12px}
+</style>
+</head>
+<body>
+<h1>🐕 机器狗蓝牙协议探测台</h1>
+<div class="sub">
+  用途：把 XHY-RC 这类"没有 SDK 的玩具狗"变成可编程设备。<br>
+  用法：连接 → 看服务/特征列表 → 手动发十六进制指令试探 → 找到每个动作对应的字节 → 填进底部指令表保存 → 主应用（index.html）即可驱动真狗。
+</div>
+
+<div class="warnbox">
+  ⚠️ <b>必须用 http://localhost 打开</b>，Chrome 的 Web Bluetooth 在 <code>file://</code> 下会被禁用。<br>
+  在本文件夹执行 <code>python3 -m http.server 8000</code>，然后浏览器访问 <code>http://localhost:8000/ble-probe.html</code>。<br>
+  手机也能用：Chrome for Android 支持 Web Bluetooth；iOS Safari <b>不支持</b>，iOS 请改用「抓包法」（见页面底部）。
+</div>
+
+<div class="card">
+  <h2>① 连接设备</h2>
+  <div class="row">
+    <button id="btnConn">🔗 扫描并连接</button>
+    <button class="ghost" id="btnDisc" disabled>断开</button>
+    <span id="connState" style="font-size:12.5px;color:var(--muted)">未连接</span>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <label>额外服务 UUID（可逗号分隔）：</label>
+    <input id="extraSvc" placeholder="例如 0000ffe0-0000-1000-8000-00805f9b34fb" style="flex:1;min-width:260px">
+  </div>
+</div>
+
+<div class="card">
+  <h2>② 服务与特征（点按钮指定写入/通知通道）</h2>
+  <table id="svcTable"><thead><tr><th>服务</th><th>特征</th><th>属性</th><th>操作</th></tr></thead><tbody><tr><td colspan="4" style="color:var(--muted)">尚未连接</td></tr></tbody></table>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>③ 发送指令</h2>
+    <div class="row">
+      <input id="hexIn" placeholder="A5 5A 01 00 FF" style="flex:1">
+      <button id="btnSend" disabled>发送</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><input type="checkbox" id="noResp" checked style="vertical-align:-2px"> Write Without Response（快，推荐）</label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <span style="font-size:12px;color:var(--muted)">常用试探帧：</span>
+      <button class="mini ghost" data-hex="A5 5A 01 00 FF">A5 5A…</button>
+      <button class="mini ghost" data-hex="AA 55 01 00 FF">AA 55…</button>
+      <button class="mini ghost" data-hex="FF 00 01 00 00">FF 00…</button>
+      <button class="mini ghost" data-hex="A5 01 00 A6">A5 01…</button>
+      <button class="mini ghost" data-hex="01">01</button>
+      <button class="mini ghost" data-hex="F1">F1</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7">
+      逐条发、观察狗的反应。有反应的那条就是"指令帧格式"，再替换其中的动作码位。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>④ 收发日志</h2>
+    <div class="log" id="log"></div>
+    <div class="row" style="margin-top:8px">
+      <button class="mini ghost" id="btnClear">清空</button>
+      <button class="mini ghost" id="btnCopy">复制全部</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>⑤ 动作指令表（探测到就填这里，自动保存）</h2>
+  <div class="mapgrid" id="mapGrid"></div>
+  <div class="row" style="margin-top:12px">
+    <button id="btnSave">💾 保存配置到本地</button>
+    <button class="ghost" id="btnTest">▶ 依次试发全部</button>
+    <span id="saveState" style="font-size:12px;color:var(--ok)"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>⑥ 抓包法（iOS/安卓通用，最可靠）</h2>
+  <div style="font-size:12.8px;line-height:1.9;color:#c6cfd8">
+    <b>安卓：</b>设置 → 开发者选项 → 开启「启用蓝牙 HCI 嗅探日志」→ 用 XHY-RC 连接狗，<b>每个动作停 2 秒</b>依次按一遍 → 停止 → 取出 <code>/data/misc/bluetooth/logs/btsnoop_hci.log</code>（或 <code>adb bugreport</code>）→ 用 <b>Wireshark</b> 打开，过滤 <code>btatt.opcode == 0x52</code>（Write Command）和 <code>0x12</code>（Write Request）→ 每条动作对应的字节就出来了。<br>
+    <b>iOS：</b>Mac 装 Xcode → Additional Tools → <b>PacketLogger</b>，用 iPhone 连狗操作，抓 ATT 写入包。<br>
+    <b>捷径（不用抓包）：</b>用 nRF Connect 连上狗，逐个特征点写入试；或直接用本页 ③ 试探常见帧。<br>
+    抓到后把"字节 → 动作"的对应关系填进 ⑤，主应用就能按音乐节拍发指令了。
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const CFG_KEY='dogBleCfg';
+const MOVES=['idle','bob','wag','spin','jump','sway','nod','crouch'];
+const MOVE_CN={idle:'待机',bob:'点头律动',wag:'摇尾巴',spin:'转圈',jump:'跳跃',sway:'摇摆',nod:'低头抬头',crouch:'蹲伏'};
+
+let device=null,server=null,writeChar=null,notifyChar=null;
+let cfg=JSON.parse(localStorage.getItem(CFG_KEY)||'{}');
+
+function log(msg,cls='sys'){
+  const d=document.createElement('div');
+  d.className=cls;
+  d.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`;
+  $('log').appendChild(d);$('log').scrollTop=1e6;
+}
+function bytesToHex(buf){
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0').toUpperCase()).join(' ');
+}
+function hexToBytes(h){
+  return new Uint8Array(h.trim().split(/[\s,]+/).map(x=>parseInt(x,16)).filter(n=>!isNaN(n)));
+}
+const COMMON=[
+  '0000ffe0-0000-1000-8000-00805f9b34fb',
+  '0000ffe5-0000-1000-8000-00805f9b34fb',
+  '0000fff0-0000-1000-8000-00805f9b34fb',
+  '0000ff00-0000-1000-8000-00805f9b34fb',
+  '0000ae30-0000-1000-8000-00805f9b34fb',
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455'
+];
+
+$('btnConn').onclick=async()=>{
+  try{
+    log('请求蓝牙设备…');
+    const extra=$('extraSvc').value.split(/[,\s]+/).filter(Boolean);
+    const opt=[...new Set([...COMMON,...extra])];
+    device=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:opt});
+    $('connState').textContent=`连接中：${device.name||device.id}`;
+    server=await device.gatt.connect();
+    log(`已连接 ${device.name||device.id}`,'sys');
+    $('connState').textContent=`✅ 已连接：${device.name||device.id}`;
+    $('btnDisc').disabled=false;$('btnSend').disabled=false;
+    await renderServices();
+  }catch(e){log('连接失败：'+e.message,'sys');$('connState').textContent='连接失败：'+e.message;}
+};
+
+$('btnDisc').onclick=()=>{
+  try{device&&device.gatt.connected&&device.gatt.disconnect();}catch(e){}
+  writeChar=null;notifyChar=null;
+  $('connState').textContent='已断开';$('btnDisc').disabled=true;$('btnSend').disabled=true;
+  log('已断开','sys');
+};
+
+async function renderServices(){
+  const tbody=$('svcTable').querySelector('tbody');
+  tbody.innerHTML='';
+  const svcs=await server.getPrimaryServices();
+  log(`发现 ${svcs.length} 个可访问服务`,'sys');
+  if(!svcs.length){
+    tbody.innerHTML='<tr><td colspan="4" style="color:#ffb74d">没有返回服务：说明该设备的服务 UUID 不在候选列表里。请在 ① 的输入框里补上（可从 nRF Connect 里看到），再重连。</td></tr>';
+    return;
+  }
+  for(const s of svcs){
+    let chars=[];
+    try{chars=await s.getCharacteristics();}catch(e){}
+    for(const c of chars){
+      const p=c.properties;
+      const props=[p.read&&'read',p.write&&'write',p.writeWithoutResponse&&'writeNR',p.notify&&'notify',p.indicate&&'indicate'].filter(Boolean).join(' / ');
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${s.uuid}</td><td>${c.uuid}</td><td>${props||'-'}</td><td></td>`;
+      const td=tr.querySelector('td:last-child');
+      if(p.write||p.writeWithoutResponse){
+        const b=document.createElement('button');b.className='mini';b.textContent='设为写入';
+        b.onclick=()=>{writeChar=c;log(`写入通道 = ${c.uuid}`,'sys');flash(b,'✅ 已设');};
+        td.appendChild(b);
+      }
+      if(p.notify||p.indicate){
+        const b=document.createElement('button');b.className='mini ghost';b.textContent='监听';
+        b.style.marginLeft='6px';
+        b.onclick=async()=>{
+          try{
+            await c.startNotifications();
+            c.addEventListener('characteristicvaluechanged',ev=>log('RX  '+bytesToHex(ev.target.value.buffer),'rx'));
+            notifyChar=c;log(`开始监听 ${c.uuid}`,'sys');flash(b,'✅ 监听中');
+          }catch(e){log('监听失败：'+e.message,'sys');}
+        };
+        td.appendChild(b);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+}
+function flash(btn,txt){const o=btn.textContent;btn.textContent=txt;setTimeout(()=>btn.textContent=o,1200);}
+
+async function sendHex(hex){
+  if(!writeChar){log('请先点某个特征的「设为写入」','sys');return;}
+  const arr=hexToBytes(hex);
+  if(!arr.length){log('十六进制格式不对','sys');return;}
+  try{
+    if($('noResp').checked&&writeChar.properties.writeWithoutResponse){
+      await writeChar.writeValueWithoutResponse(arr);
+    }else{await writeChar.writeValue(arr);}
+    log('TX  '+bytesToHex(arr),'tx');
+  }catch(e){log('发送失败：'+e.message,'sys');}
+}
+$('btnSend').onclick=()=>sendHex($('hexIn').value);
+$('hexIn').addEventListener('keydown',e=>{if(e.key==='Enter')sendHex($('hexIn').value);});
+document.querySelectorAll('[data-hex]').forEach(b=>b.onclick=()=>{$('hexIn').value=b.dataset.hex;sendHex(b.dataset.hex);});
+
+$('btnClear').onclick=()=>$('log').innerHTML='';
+$('btnCopy').onclick=()=>{navigator.clipboard.writeText($('log').innerText);};
+
+/* 动作映射表 */
+function renderMap(){
+  const g=$('mapGrid');g.innerHTML='';
+  MOVES.forEach(m=>{
+    const d=document.createElement('div');d.className='mapitem';
+    d.innerHTML=`<div class="n">${MOVE_CN[m]} <span style="color:#556">(${m})</span></div>`;
+    const i=document.createElement('input');
+    i.placeholder='十六进制，如 A5 5A 02 00 FF';
+    i.value=(cfg.cmds&&cfg.cmds[m])||'';
+    i.oninput=()=>{cfg.cmds=cfg.cmds||{};cfg.cmds[m]=i.value.trim();};
+    d.appendChild(i);g.appendChild(d);
+  });
+}
+$('btnSave').onclick=()=>{
+  if(writeChar){
+    cfg.service=writeChar.service.uuid;
+    cfg.write=writeChar.uuid;
+    if(notifyChar)cfg.notify=notifyChar.uuid;
+  }
+  localStorage.setItem(CFG_KEY,JSON.stringify(cfg));
+  $('saveState').textContent='已保存 ✓ 主应用打开后会自动读取';
+  setTimeout(()=>$('saveState').textContent='',2500);
+};
+$('btnTest').onclick=async()=>{
+  for(const m of MOVES){
+    const h=cfg.cmds&&cfg.cmds[m];if(!h)continue;
+    await sendHex(h);await new Promise(r=>setTimeout(r,900));
+  }
+};
+renderMap();
+log('探测台就绪。先连接设备。','sys');
+</script>
+</body>
+</html>
